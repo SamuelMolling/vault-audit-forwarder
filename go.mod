@@ -1,3 +1,7 @@
 module github.com/SamuelMolling/vault-audit-forwarder
 
-go 1.25.2
+go 1.25.1
+
+require github.com/fsnotify/fsnotify v1.9.0
+
+require golang.org/x/sys v0.13.0 // indirect
