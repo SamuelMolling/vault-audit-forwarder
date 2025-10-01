@@ -28,4 +28,4 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           push: true
-          tags: ghcr.io/${{ github.repository }}/vault-audit-forwarder:latest
+          tags: ghcr.io/samuelmolling/vault-audit-forwarder:latest
