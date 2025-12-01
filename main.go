@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,7 +16,10 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-var filePath = os.Getenv("AUDIT_FILE_PATH")
+var (
+	filePath       = os.Getenv("AUDIT_FILE_PATH")
+	notifierConfig *NotifierConfig
+)
 
 // Check if this Vault instance is the leader
 func isVaultLeader() bool {
@@ -95,18 +99,35 @@ func forwardWithRetry(data []byte, maxRetries int, baseDelay time.Duration) erro
 }
 
 func forward(data []byte) error {
-	var msg interface{}
+	// Split data into lines (each line is a separate JSON audit event)
+	lines := bytes.Split(data, []byte("\n"))
 
-	// Try to unmarshal as JSON to embed native JSON in the event
-	if err := json.Unmarshal(data, &msg); err != nil {
-		// Fallback to string if JSON unmarshal fails
-		msg = string(data)
+	for _, line := range lines {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+
+		var msg interface{}
+
+		// Try to unmarshal as JSON to embed native JSON in the event
+		if err := json.Unmarshal(line, &msg); err != nil {
+			// Fallback to string if JSON unmarshal fails
+			msg = string(line)
+		}
+
+		// Send to stdout (for logs collection)
+		printLog(LogEvent{
+			Type:    "audit",
+			Message: msg,
+		}, false)
+
+		// Process for notifications (async, non-blocking)
+		if notifierConfig != nil && notifierConfig.Enabled {
+			go ProcessAuditEvent(line, notifierConfig)
+		}
 	}
 
-	printLog(LogEvent{
-		Type:    "audit",
-		Message: msg,
-	}, false)
 	return nil
 }
 
@@ -303,6 +324,30 @@ func healthServer(ctx context.Context, wg *sync.WaitGroup) {
 func main() {
 	if filePath == "" {
 		log.Fatal(`{"type":"forwarder","level":"fatal","message":"AUDIT_FILE_PATH not set"}`)
+	}
+
+	// Load notifier configuration
+	notifierConfig = LoadNotifierConfig()
+	if notifierConfig.Enabled {
+		printLog(LogEvent{
+			Type:    "forwarder",
+			Level:   "info",
+			Message: "notification feature enabled",
+		}, false)
+		if notifierConfig.SlackEnabled {
+			printLog(LogEvent{
+				Type:    "forwarder",
+				Level:   "info",
+				Message: "slack notifications enabled",
+			}, false)
+		}
+		if notifierConfig.WebhookEnabled {
+			printLog(LogEvent{
+				Type:    "forwarder",
+				Level:   "info",
+				Message: fmt.Sprintf("webhook notifications enabled: %s", notifierConfig.WebhookURL),
+			}, false)
+		}
 	}
 
 	// Create cancellable context

@@ -1,4 +1,4 @@
-module github.com/SamuelMolling/vault-audit-forwarder
+module github.com/firefliesai/infra-toolbox/vault-audit-forwarder
 
 go 1.25.1
 
